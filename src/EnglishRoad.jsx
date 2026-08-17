@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Flame, BookOpen, Layers, Check, X, RotateCcw, Award, ChevronRight } from "lucide-react";
+import { Flame, BookOpen, Layers, Check, X, RotateCcw, Award, ChevronRight, Map as MapIcon, ArrowLeft } from "lucide-react";
 
 // ---------- Palette (applied via inline style, not Tailwind arbitrary classes) ----------
 const C = {
@@ -158,6 +158,18 @@ const addDays = (dateStr, n) => {
 };
 const BOX_INTERVAL = { 1: 1, 2: 3, 3: 7 };
 
+// builds a smooth S-curve path connecting a list of {x,y} points
+function pathFromPoints(points) {
+  if (points.length < 2) return "";
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1], p1 = points[i];
+    const midY = (p0.y + p1.y) / 2;
+    d += ` C ${p0.x} ${midY}, ${p1.x} ${midY}, ${p1.x} ${p1.y}`;
+  }
+  return d;
+}
+
 export default function EnglishRoad() {
   const [tab, setTab] = useState("leitura");
   const [loaded, setLoaded] = useState(false);
@@ -166,6 +178,7 @@ export default function EnglishRoad() {
   const [reviewIdx, setReviewIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
+  const [selectedStoryId, setSelectedStoryId] = useState(null);
 
   // ---- load ----
   useEffect(() => {
@@ -192,7 +205,15 @@ export default function EnglishRoad() {
     try { await window.storage.set("flashcards", JSON.stringify(next)); } catch (e) { console.error(e); }
   }, []);
 
-  const currentStory = STORIES.find(s => !progress.completedStoryIds.includes(s.id)) || null;
+  const currentIndex = STORIES.findIndex(s => !progress.completedStoryIds.includes(s.id));
+  const currentStory = currentIndex === -1 ? null : STORIES[currentIndex];
+  const displayStory = selectedStoryId ? STORIES.find(s => s.id === selectedStoryId) : currentStory;
+
+  const goToStory = (id) => {
+    setSelectedStoryId(id);
+    setJustCompleted(false);
+    setTab("leitura");
+  };
 
   const completeStory = async () => {
     if (!currentStory) return;
@@ -260,12 +281,19 @@ export default function EnglishRoad() {
         <div style={{ display: "flex", background: C.cream, borderRadius: 12, padding: 4, boxShadow: "0 4px 14px rgba(22,35,61,0.15)" }}>
           {[
             ["leitura", "Leitura", BookOpen],
+            ["mapa", "Mapa", MapIcon],
             ["flashcards", "Flashcards", Layers],
             ["progresso", "Progresso", Award],
           ].map(([key, label, Icon]) => (
             <button
               key={key}
-              onClick={() => { setTab(key); setJustCompleted(false); setFlipped(false); setReviewIdx(0); }}
+              onClick={() => {
+                setTab(key);
+                setJustCompleted(false);
+                setFlipped(false);
+                setReviewIdx(0);
+                if (key === "leitura") setSelectedStoryId(null);
+              }}
               style={{
                 flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                 padding: "10px 4px", borderRadius: 9, border: "none", cursor: "pointer",
@@ -283,7 +311,20 @@ export default function EnglishRoad() {
 
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 20px 60px" }}>
         {tab === "leitura" && (
-          <ReadingTab story={currentStory} justCompleted={justCompleted} onComplete={completeStory} />
+          <ReadingTab
+            story={displayStory}
+            justCompleted={justCompleted}
+            onComplete={completeStory}
+            onBackToMap={() => setTab("mapa")}
+          />
+        )}
+        {tab === "mapa" && (
+          <MapTab
+            stories={STORIES}
+            completedIds={progress.completedStoryIds}
+            currentIndex={currentIndex}
+            onSelect={goToStory}
+          />
         )}
         {tab === "flashcards" && (
           <FlashcardTab
@@ -303,17 +344,32 @@ export default function EnglishRoad() {
     </div>
   );
 
-  function ReadingTab({ story, justCompleted, onComplete }) {
+  function ReadingTab({ story, justCompleted, onComplete, onBackToMap }) {
     if (!story) {
       return (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <p style={{ fontFamily: FONT_DISPLAY, fontSize: 20 }}>Todas as histórias da Fase 1 concluídas! 🎉</p>
-          <p style={{ color: "#6b6a63", fontSize: 14, marginTop: 8 }}>Mais histórias chegam na Fase 2.</p>
+          <p style={{ fontFamily: FONT_DISPLAY, fontSize: 20 }}>Todas as histórias concluídas! 🎉</p>
+          <p style={{ color: "#6b6a63", fontSize: 14, marginTop: 8 }}>Mais histórias chegam em breve.</p>
+          <button onClick={onBackToMap} style={{
+            marginTop: 16, background: "none", border: `1.5px solid ${C.ink}`, borderRadius: 10,
+            padding: "8px 16px", color: C.ink, fontWeight: 700, cursor: "pointer",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}>
+            <MapIcon size={15} /> Ver mapa
+          </button>
         </div>
       );
     }
+    const isReplay = progress.completedStoryIds.includes(story.id);
     return (
       <div>
+        <button onClick={onBackToMap} style={{
+          background: "none", border: "none", color: C.rust, fontWeight: 700, fontSize: 13,
+          display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: 0, marginBottom: 12,
+        }}>
+          <ArrowLeft size={14} /> Mapa
+        </button>
+
         <div style={{ background: C.cream, borderRadius: 16, padding: "22px 20px", boxShadow: "0 2px 10px rgba(22,35,61,0.08)" }}>
           <p style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.rust, letterSpacing: "0.08em", margin: 0, textTransform: "uppercase" }}>
             Fase {story.phase} · {story.subtitle}
@@ -339,7 +395,12 @@ export default function EnglishRoad() {
           </div>
         </div>
 
-        {!justCompleted ? (
+        {isReplay ? (
+          <div style={{ marginTop: 22, textAlign: "center", padding: "14px", borderRadius: 12, background: C.parchmentDeep, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Check size={16} color={C.sage} />
+            <span style={{ fontSize: 14 }}>Você já concluiu essa história — só revisitando.</span>
+          </div>
+        ) : !justCompleted ? (
           <button onClick={onComplete} style={{
             marginTop: 22, width: "100%", padding: "14px", borderRadius: 12, border: "none",
             background: C.sage, color: C.cream, fontFamily: FONT_BODY, fontWeight: 700, fontSize: 15,
@@ -358,6 +419,85 @@ export default function EnglishRoad() {
             </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  function MapTab({ stories, completedIds, currentIndex, onSelect }) {
+    const colX = [66, 214];
+    const rowGap = 116;
+    const topPad = 60;
+    const points = stories.map((s, i) => ({ x: colX[i % 2], y: topPad + i * rowGap, story: s }));
+    const height = topPad + (stories.length - 1) * rowGap + 60;
+    const pathD = pathFromPoints(points);
+
+    return (
+      <div>
+        <div style={{ background: C.cream, borderRadius: 16, padding: "10px 6px 4px", boxShadow: "0 2px 10px rgba(22,35,61,0.08)" }}>
+          <svg viewBox={`0 0 280 ${height}`} width="100%" height={height}>
+            <path d={pathD} fill="none" stroke={C.parchmentDeep} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={pathD} fill="none" stroke={C.brass} strokeWidth="3" strokeDasharray="14 12" strokeLinecap="round" opacity="0.7" />
+
+            {points.map((p, i) => {
+              const done = completedIds.includes(p.story.id);
+              const isCurrent = i === currentIndex;
+              const locked = !done && !isCurrent;
+              const showPhaseLabel = i === 0 || stories[i].phase !== stories[i - 1].phase;
+              const fill = done ? C.sage : isCurrent ? C.brass : C.parchmentDeep;
+              return (
+                <g key={p.story.id}>
+                  {showPhaseLabel && (
+                    <text x={p.x} y={p.y - 34} textAnchor="middle" fontSize="10" fill={C.rust}
+                      fontFamily={FONT_MONO} letterSpacing="1" style={{ textTransform: "uppercase" }}>
+                      Fase {p.story.phase}
+                    </text>
+                  )}
+                  <g
+                    transform={`translate(${p.x},${p.y})`}
+                    onClick={() => !locked && onSelect(p.story.id)}
+                    style={{ cursor: locked ? "default" : "pointer" }}
+                  >
+                    {isCurrent && <circle r="27" fill="none" stroke={C.brass} strokeWidth="2" opacity="0.45" />}
+                    <circle r="20" fill={fill} stroke={C.ink} strokeWidth={locked ? 1.5 : 0} opacity={locked ? 0.7 : 1} />
+                    {done ? (
+                      <text y="6" textAnchor="middle" fontSize="17" fill={C.cream}>✓</text>
+                    ) : locked ? (
+                      <text y="6" textAnchor="middle" fontSize="13" fill="#8a8477">🔒</text>
+                    ) : (
+                      <text y="6" textAnchor="middle" fontSize="14" fontWeight="700" fill={C.ink}>{i + 1}</text>
+                    )}
+                    {isCurrent && <text y="46" textAnchor="middle" fontSize="18">🏍️</text>}
+                  </g>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {stories.map((s, i) => {
+            const done = completedIds.includes(s.id);
+            const isCurrent = i === currentIndex;
+            const locked = !done && !isCurrent;
+            return (
+              <div key={s.id} onClick={() => !locked && goToStory(s.id)} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                background: C.cream, borderRadius: 10, opacity: locked ? 0.55 : 1,
+                cursor: locked ? "default" : "pointer",
+              }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                  background: done ? C.sage : isCurrent ? C.brass : C.parchmentDeep,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, color: done ? C.cream : C.ink,
+                }}>
+                  {done ? "✓" : i + 1}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500 }}>{s.title}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
