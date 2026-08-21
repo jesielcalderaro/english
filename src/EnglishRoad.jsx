@@ -175,10 +175,10 @@ export default function EnglishRoad() {
   const [loaded, setLoaded] = useState(false);
   const [progress, setProgress] = useState({ completedStoryIds: [], currentStreak: 0, longestStreak: 0, lastCompletedDate: null, completedDays: [] });
   const [cards, setCards] = useState({}); // word -> {box, nextReview, pt}
-  const [reviewIdx, setReviewIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [selectedStoryId, setSelectedStoryId] = useState(null);
+  const [cardLocked, setCardLocked] = useState(false); // evita toque-fantasma logo após trocar de card
 
   // ---- load ----
   useEffect(() => {
@@ -240,18 +240,28 @@ export default function EnglishRoad() {
   };
 
   const dueWords = Object.entries(cards).filter(([, v]) => v.nextReview <= todayStr()).map(([w]) => w);
-  const activeWord = dueWords[reviewIdx];
+  // O card respondido sai sozinho dessa lista (nextReview vira uma data futura),
+  // então o próximo pendente sempre fica na posição 0 — não avançamos índice manualmente.
+  const activeWord = dueWords[0];
   const activeCard = activeWord ? cards[activeWord] : null;
 
   const answerCard = async (knew) => {
-    if (!activeWord) return;
+    if (!activeWord || cardLocked) return; // ignora resposta se já estiver processando uma
+    setCardLocked(true);
     const c = cards[activeWord];
     const box = knew ? Math.min(3, c.box + 1) : 1;
     const nextReview = addDays(todayStr(), BOX_INTERVAL[box]);
     const next = { ...cards, [activeWord]: { ...c, box, nextReview } };
-    await saveCards(next);
     setFlipped(false);
-    setReviewIdx(i => i + 1);
+    await saveCards(next);
+    // // pequena janela ignorando toques novos, pra não capturar o "toque fantasma"
+    // que sobra no mesmo lugar da tela onde o botão anterior estava
+    setTimeout(() => setCardLocked(false), 350);
+  };
+
+  const flipCard = () => {
+    if (cardLocked) return;
+    setFlipped(f => !f);
   };
 
   const last7 = Array.from({ length: 7 }, (_, i) => addDays(todayStr(), i - 6));
@@ -291,7 +301,6 @@ export default function EnglishRoad() {
                 setTab(key);
                 setJustCompleted(false);
                 setFlipped(false);
-                setReviewIdx(0);
                 if (key === "leitura") setSelectedStoryId(null);
               }}
               style={{
@@ -332,8 +341,9 @@ export default function EnglishRoad() {
             activeWord={activeWord}
             activeCard={activeCard}
             flipped={flipped}
-            setFlipped={setFlipped}
+            onFlip={flipCard}
             onAnswer={answerCard}
+            locked={cardLocked}
             totalCards={Object.keys(cards).length}
           />
         )}
@@ -502,7 +512,7 @@ export default function EnglishRoad() {
     );
   }
 
-  function FlashcardTab({ totalDue, activeWord, activeCard, flipped, setFlipped, onAnswer, totalCards }) {
+  function FlashcardTab({ totalDue, activeWord, activeCard, flipped, onFlip, onAnswer, locked, totalCards }) {
     if (totalCards === 0) {
       return (
         <div style={{ textAlign: "center", padding: "40px 20px", color: "#6b6a63" }}>
@@ -523,10 +533,12 @@ export default function EnglishRoad() {
       <div>
         <p style={{ fontFamily: FONT_MONO, fontSize: 12, color: "#6b6a63", marginBottom: 14 }}>{totalDue} pendente{totalDue !== 1 ? "s" : ""} hoje</p>
         <div
-          onClick={() => setFlipped(f => !f)}
+          onClick={onFlip}
           style={{
             background: C.ink, borderRadius: 18, height: 220, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 6px 18px rgba(22,35,61,0.25)",
+            alignItems: "center", justifyContent: "center", cursor: locked ? "default" : "pointer",
+            boxShadow: "0 6px 18px rgba(22,35,61,0.25)", opacity: locked ? 0.85 : 1,
+            pointerEvents: locked ? "none" : "auto",
           }}
         >
           <p style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.brass, textTransform: "uppercase", letterSpacing: "0.1em" }}>
@@ -539,14 +551,14 @@ export default function EnglishRoad() {
         </div>
 
         {flipped && (
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button onClick={() => onAnswer(false)} style={{
+          <div style={{ display: "flex", gap: 10, marginTop: 16, opacity: locked ? 0.6 : 1, pointerEvents: locked ? "none" : "auto" }}>
+            <button onClick={() => onAnswer(false)} disabled={locked} style={{
               flex: 1, padding: "14px", borderRadius: 12, border: `1.5px solid ${C.rust}`, background: "none",
               color: C.rust, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer",
             }}>
               <RotateCcw size={16} /> Não sabia
             </button>
-            <button onClick={() => onAnswer(true)} style={{
+            <button onClick={() => onAnswer(true)} disabled={locked} style={{
               flex: 1, padding: "14px", borderRadius: 12, border: "none", background: C.sage,
               color: C.cream, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer",
             }}>
