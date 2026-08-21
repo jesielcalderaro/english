@@ -254,7 +254,7 @@ export default function EnglishRoad() {
     const next = { ...cards, [activeWord]: { ...c, box, nextReview } };
     setFlipped(false);
     await saveCards(next);
-    // // pequena janela ignorando toques novos, pra não capturar o "toque fantasma"
+ // // pequena janela ignorando toques novos, pra não capturar o "toque fantasma"
     // que sobra no mesmo lugar da tela onde o botão anterior estava
     setTimeout(() => setCardLocked(false), 350);
   };
